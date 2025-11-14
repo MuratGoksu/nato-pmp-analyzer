@@ -1,0 +1,12 @@
+streamlit
+pandas
+plotly
+PyPDF2
+python-docx
+langchain
+langchain-community
+langchain-openai
+chromadb
+python-dotenv
+openai
+networkx

@@ -1,0 +1,142 @@
+import streamlit as st
+import os
+from pathlib import Path
+import tempfile
+from datetime import datetime
+import sys
+import pandas as pd
+
+sys.path.append(str(Path(__file__).parent))
+
+from backend.document_processor import DocumentProcessor
+from backend.rag_engine import RAGEngine
+from backend.relationship_analyzer import RelationshipAnalyzer
+
+st.set_page_config(page_title="NATO PMP", page_icon="🛡️", layout="wide")
+
+# Session state
+if 'processed_documents' not in st.session_state:
+    st.session_state.processed_documents = []
+if 'relationship_analyzer' not in st.session_state:
+    st.session_state.relationship_analyzer = RelationshipAnalyzer()
+
+# Initialize
+processor = DocumentProcessor()
+
+with st.sidebar:
+    st.title("🛡️ NATO PMP")
+    page = st.radio("Navigation", ["🏠 Home", "📤 Upload", "📈 Dashboard", "🔗 Network"])
+
+# HOME PAGE
+if page == "🏠 Home":
+    st.title("🛡️ NATO PMP Analyzer")
+    st.metric("Documents Processed", len([d for d in st.session_state.processed_documents if d['success']]))
+    st.info("Upload documents to begin analysis")
+
+# UPLOAD PAGE
+elif page == "📤 Upload":
+    st.title("📤 Upload Documents")
+    
+    uploaded_files = st.file_uploader(
+        "Choose PDF or DOCX files",
+        type=['pdf', 'docx'],
+        accept_multiple_files=True
+    )
+    
+    if uploaded_files:
+        st.write(f"**{len(uploaded_files)} file(s) selected**")
+        for f in uploaded_files:
+            st.write(f"- {f.name} ({f.size/1024:.1f} KB)")
+        
+        if st.button("🚀 Process", type="primary", use_container_width=True):
+            progress_bar = st.progress(0)
+            
+            for idx, file in enumerate(uploaded_files):
+                with tempfile.NamedTemporaryFile(delete=False, suffix=Path(file.name).suffix) as tmp:
+                    tmp.write(file.getvalue())
+                    tmp_path = tmp.name
+                
+                try:
+                    result = processor.process_document(tmp_path, file.name)
+                    st.session_state.processed_documents.append(result)
+                    os.unlink(tmp_path)
+                except Exception as e:
+                    st.error(f"Error: {file.name}: {str(e)}")
+                
+                progress_bar.progress((idx + 1) / len(uploaded_files))
+            
+            st.success(f"✅ Processed {len(uploaded_files)} file(s)!")
+            st.balloons()
+
+# DASHBOARD PAGE
+elif page == "📈 Dashboard":
+    st.title("📈 Dashboard")
+    
+    docs = [d for d in st.session_state.processed_documents if d['success']]
+    
+    if docs:
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            st.metric("📁 Projects", len(docs))
+        
+        with col2:
+            total_words = sum(d.get('metadata', {}).get('word_count', 0) for d in docs)
+            st.metric("📝 Words", f"{total_words:,}")
+        
+        with col3:
+            total_stakeholders = sum(len(d.get('metadata', {}).get('stakeholders', [])) for d in docs)
+            st.metric("👥 Stakeholders", total_stakeholders)
+        
+        st.markdown("#### Projects")
+        table_data = []
+        for doc in docs:
+            meta = doc.get('metadata', {})
+            table_data.append({
+                'Project': meta.get('project_name', 'N/A')[:30],
+                'Status': meta.get('status', 'N/A'),
+                'Words': meta.get('word_count', 0),
+                'Stakeholders': len(meta.get('stakeholders', []))
+            })
+        
+        st.dataframe(pd.DataFrame(table_data), use_container_width=True, hide_index=True)
+    else:
+        st.warning("⚠️ No documents processed yet")
+
+# NETWORK PAGE
+elif page == "🔗 Network":
+    st.title("🔗 Network Graph")
+    
+    docs = [d for d in st.session_state.processed_documents if d['success']]
+    
+    if docs:
+        analyzer = st.session_state.relationship_analyzer
+        network_data = analyzer.get_network_data(docs)
+        
+        nodes = network_data['nodes']
+        edges = network_data['edges']
+        
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            st.metric("🟢 Projects", len(nodes))
+        
+        with col2:
+            st.metric("🔗 Relationships", len(edges))
+        
+        with col3:
+            avg = len(edges) * 2 / len(nodes) if nodes else 0
+            st.metric("🤝 Avg Connections", f"{avg:.1f}")
+        
+        st.markdown("#### Relationships")
+        if edges:
+            for edge in edges[:10]:
+                st.write(f"**{edge['source']}** ↔ **{edge['target']}**")
+                st.caption(f"{edge['type'].title()}: {edge['label']}")
+        else:
+            st.info("No relationships found")
+    else:
+        st.warning("⚠️ No documents processed yet")
+
+st.markdown("---")
+st.markdown("🛡️ NATO PMP Analyzer v0.5 | Ready ✅")

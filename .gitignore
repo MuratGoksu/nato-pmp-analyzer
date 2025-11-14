@@ -1,0 +1,42 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+ENV/
+
+# Environment variables
+.env
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Database
+chroma_db/
+*.db
+*.sqlite
+
+# Backups
+*.tar.gz
+*backup*
+*.old
+*.working_backup
+
+# PDF documents (test files)
+*.pdf
+
+# Screenshots (uncomment if you want to include them)
+# screenshots/
+
+# Application specific
+nato-pmp-analyzer-backup-*
