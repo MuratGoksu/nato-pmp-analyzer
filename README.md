@@ -456,6 +456,39 @@ touch backend/__init__.py
 
 ---
 
+## 🎬 Demo & Presentation Materials
+
+**Comprehensive demo package included!**
+
+### Demo Resources
+- **[DEMO_SCRIPT.md](DEMO_SCRIPT.md)** - Step-by-step demo walkthrough (10-15 minutes)
+- **[PRESENTATION_OUTLINE.md](PRESENTATION_OUTLINE.md)** - Full presentation deck outline (15 slides, 20-30 min)
+- **[DEMO_QUESTIONS.md](DEMO_QUESTIONS.md)** - Sample chatbot questions by category
+- **[DEMO_CHECKLIST.md](DEMO_CHECKLIST.md)** - Complete preparation checklist
+
+### Quick Demo Guide
+
+**5-Minute Quick Demo:**
+1. Upload 3 sample documents
+2. Show Dashboard with portfolio metrics
+3. Ask chatbot: "Which projects are at risk?"
+4. Generate Stakeholder Network visualization
+
+**15-Minute Full Demo:**
+1. Show all pages (Upload, Chatbot, Dashboard, Networks)
+2. Demonstrate 5-6 chatbot questions
+3. Generate all visualizations
+4. Highlight source citations and metadata
+
+**Presentation Tips:**
+- Start with the business problem (manual analysis pain)
+- Show time savings (50 hours → 10 minutes)
+- Demonstrate AI intelligence with complex queries
+- End with strategic value and ROI
+- Have backup screenshots if live demo fails
+
+---
+
 ## 🎊 Acknowledgments
 
 Built with:
