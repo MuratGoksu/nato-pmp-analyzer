@@ -19,15 +19,34 @@ from dotenv import dotenv_values
 _env_path = Path(__file__).parent.parent / '.env'
 _env_config = dotenv_values(_env_path) if _env_path.exists() else {}
 
+# Try to import streamlit for cloud deployment
+try:
+    import streamlit as st
+    _has_streamlit = True
+except ImportError:
+    _has_streamlit = False
+
+
+def _get_env_var(key: str, default: str = None) -> str:
+    """Get environment variable from Streamlit secrets or .env file"""
+    # Try Streamlit secrets first (for cloud deployment)
+    if _has_streamlit:
+        try:
+            return st.secrets.get(key, _env_config.get(key) or os.getenv(key, default))
+        except:
+            pass
+    # Fall back to .env file or environment variables
+    return _env_config.get(key) or os.getenv(key, default)
+
 
 class RAGEngine:
     """RAG Engine for document analysis"""
-    
+
     def __init__(self, persist_directory: str = "./chroma_db"):
         self.persist_directory = persist_directory
-        # Use dotenv_values for reliable key loading (load_dotenv truncates long keys)
-        self.openai_api_key = _env_config.get("OPENAI_API_KEY") or os.getenv("OPENAI_API_KEY")
-        self.model_name = _env_config.get("OPENAI_MODEL") or os.getenv("OPENAI_MODEL", "gpt-4-turbo-preview")
+        # Use helper function to get API key from multiple sources
+        self.openai_api_key = _get_env_var("OPENAI_API_KEY")
+        self.model_name = _get_env_var("OPENAI_MODEL", "gpt-4-turbo-preview")
 
         if not self.openai_api_key:
             raise ValueError("OPENAI_API_KEY not found!")

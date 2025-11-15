@@ -22,6 +22,21 @@ from backend.notification_manager import NotificationManager
 from backend.ai_insights import AIInsightsManager
 from backend.document_storage import DocumentStorage
 
+# Load secrets from Streamlit Cloud or .env file
+def load_secrets():
+    """Load secrets from st.secrets (Streamlit Cloud) into environment variables"""
+    try:
+        # Try to load from Streamlit secrets (for cloud deployment)
+        if hasattr(st, 'secrets'):
+            for key in st.secrets:
+                if key not in os.environ:  # Don't override existing env vars
+                    os.environ[key] = str(st.secrets[key])
+    except Exception as e:
+        # If st.secrets doesn't exist (local), environment will use .env file
+        pass
+
+load_secrets()
+
 st.set_page_config(
     page_title="NATO PMP Analyzer",
     page_icon="🛡️",
