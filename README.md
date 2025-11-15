@@ -532,22 +532,91 @@ For internal use and demonstration purposes.
 
 ---
 
-## 🚀 Next Steps
+## 🚀 Deployment Options
 
-**Ready to continue?**
+The NATO PMP Analyzer can be deployed in three ways:
 
-1. **Day 3-4:** Implement RAG pipeline for intelligent chatbot
-2. **Week 2:** Add advanced visualizations and analytics
-3. **Week 3:** Build network graph and relationship mapping
-4. **Week 4:** Polish, test, and prepare demo
+### 1. Streamlit Cloud ⭐ (Fastest - 10 minutes)
+Perfect for quick demos and testing.
 
-**For Day 3 preparation:**
-- Get OpenAI API key: https://platform.openai.com/api-keys
-- Estimated cost: €10-20 for PoC testing
-- Review LangChain documentation: https://docs.langchain.com/
+```bash
+# See: DEPLOYMENT_STREAMLIT_CLOUD.md
+1. Push code to GitHub
+2. Connect Streamlit Cloud to your repo
+3. Add secrets (API keys)
+4. Deploy!
+```
+
+**Pros:** Free, automatic HTTPS, auto-deploys on git push
+**Cons:** Limited resources, ephemeral storage
+**Best for:** Demos, PoC, quick testing
 
 ---
 
-**Built with ❤️ by a 2-person team in 2 days!**
+### 2. Docker Container ⭐⭐ (Recommended - 30 minutes)
+Portable deployment for any environment.
 
-**Status:** ✅ Day 1-2 Complete | 🔄 Day 3-4 Next | 📅 4-Week PoC Timeline
+```bash
+# See: DEPLOYMENT_DOCKER.md
+docker compose up -d
+```
+
+**Pros:** Consistent environment, scalable, portable
+**Cons:** Requires Docker knowledge
+**Best for:** Cloud VMs (AWS, Azure, GCP), development
+
+---
+
+### 3. Internal Server ⭐⭐⭐ (Production - 1-2 hours)
+Full production deployment for NATO networks.
+
+```bash
+# See: DEPLOYMENT_SERVER.md
+sudo ./install-server.sh
+```
+
+**Pros:** Full control, NATO security compliant, persistent storage
+**Cons:** Complex setup, requires server management
+**Best for:** Production NATO deployments, classified networks
+
+---
+
+**Quick Deployment Comparison:**
+
+| Feature | Streamlit Cloud | Docker | Internal Server |
+|---------|----------------|--------|-----------------|
+| Setup Time | 10 min | 30 min | 1-2 hrs |
+| Difficulty | ⭐ Easy | ⭐⭐ Medium | ⭐⭐⭐ Advanced |
+| Cost | FREE | Variable | Infrastructure |
+| Storage | Ephemeral | Persistent | Persistent |
+| Security | Basic | Good | NATO-Grade |
+| Best For | Demos | Development | Production |
+
+**Documentation:**
+- 📖 [DEPLOYMENT_CHECKLIST.md](DEPLOYMENT_CHECKLIST.md) - Complete deployment guide
+- 📖 [DEPLOYMENT_STREAMLIT_CLOUD.md](DEPLOYMENT_STREAMLIT_CLOUD.md) - Streamlit Cloud
+- 📖 [DEPLOYMENT_DOCKER.md](DEPLOYMENT_DOCKER.md) - Docker containers
+- 📖 [DEPLOYMENT_SERVER.md](DEPLOYMENT_SERVER.md) - Internal servers
+
+---
+
+## 🚀 Next Steps
+
+**Ready to deploy?**
+
+1. **Quick Demo:** Use Streamlit Cloud (10 minutes)
+2. **Development:** Use Docker (30 minutes)
+3. **Production:** Use Internal Server (1-2 hours)
+
+**For Production Deployment:**
+- Choose deployment method from above
+- Follow corresponding deployment guide
+- Configure security settings
+- Set up monitoring and backups
+
+---
+
+**Built with ❤️ for NATO Project Management**
+
+**Version:** 0.5
+**Status:** ✅ Production Ready | 🚀 Deployment Ready | 📅 November 2025
