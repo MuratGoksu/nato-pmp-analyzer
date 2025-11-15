@@ -1,0 +1,48 @@
+# Systemd service file for NATO PMP Analyzer
+# Location: /etc/systemd/system/nato-pmp-analyzer.service
+
+[Unit]
+Description=NATO PMP Analyzer - AI-powered Project Management Plan Analysis
+After=network.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=nato-pmp
+Group=nato-pmp
+WorkingDirectory=/opt/nato-pmp-analyzer
+
+# Environment configuration
+EnvironmentFile=/opt/nato-pmp-analyzer/.env
+
+# Start command
+ExecStart=/opt/nato-pmp-analyzer/venv/bin/streamlit run app.py \
+    --server.port=8501 \
+    --server.address=127.0.0.1 \
+    --server.headless=true \
+    --server.enableCORS=false \
+    --server.enableXsrfProtection=true
+
+# Restart policy
+Restart=on-failure
+RestartSec=10s
+
+# Security hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/nato-pmp-analyzer/chroma_db /opt/nato-pmp-analyzer/logs
+
+# Resource limits
+LimitNOFILE=65536
+MemoryLimit=4G
+CPUQuota=200%
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=nato-pmp-analyzer
+
+[Install]
+WantedBy=multi-user.target
