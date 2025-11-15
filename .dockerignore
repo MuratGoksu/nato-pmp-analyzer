@@ -1,0 +1,60 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+ENV/
+*.egg-info/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Streamlit
+.streamlit/secrets.toml
+
+# Database
+chroma_db/
+*.db
+*.sqlite
+
+# Backups
+*.tar.gz
+*backup*
+*.old
+*.working_backup
+
+# Test files
+test_*.py
+
+# Documentation (optional - include if you want docs in image)
+# *.md
+# screenshots/
+
+# PDF documents (test files)
+*.pdf
+NATO PMP/
+
+# Application specific
+nato-pmp-analyzer-backup-*
+processed_documents.json
+
+# Build artifacts
+dist/
+build/
