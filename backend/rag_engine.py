@@ -13,8 +13,11 @@ from langchain_core.prompts import PromptTemplate
 from langchain_core.documents import Document
 from langchain_core.runnables import RunnablePassthrough
 
-from dotenv import load_dotenv
-load_dotenv()
+from dotenv import dotenv_values
+
+# Load env using dotenv_values (more reliable than load_dotenv)
+_env_path = Path(__file__).parent.parent / '.env'
+_env_config = dotenv_values(_env_path) if _env_path.exists() else {}
 
 
 class RAGEngine:
@@ -22,17 +25,21 @@ class RAGEngine:
     
     def __init__(self, persist_directory: str = "./chroma_db"):
         self.persist_directory = persist_directory
-        self.openai_api_key = os.getenv("OPENAI_API_KEY")
-        self.model_name = os.getenv("OPENAI_MODEL", "gpt-4-turbo-preview")
-        
+        # Use dotenv_values for reliable key loading (load_dotenv truncates long keys)
+        self.openai_api_key = _env_config.get("OPENAI_API_KEY") or os.getenv("OPENAI_API_KEY")
+        self.model_name = _env_config.get("OPENAI_MODEL") or os.getenv("OPENAI_MODEL", "gpt-4-turbo-preview")
+
         if not self.openai_api_key:
             raise ValueError("OPENAI_API_KEY not found!")
-        
-        self.embeddings = OpenAIEmbeddings(openai_api_key=self.openai_api_key)
+
+        # Ensure environment variable is set for LangChain
+        os.environ["OPENAI_API_KEY"] = self.openai_api_key
+
+        self.embeddings = OpenAIEmbeddings(api_key=self.openai_api_key)
         self.llm = ChatOpenAI(
-            model_name=self.model_name,
-            temperature=0.3,
-            openai_api_key=self.openai_api_key
+            model=self.model_name,
+            temperature=0.7,  # Increased for more varied responses
+            api_key=self.openai_api_key
         )
         
         self.vectorstore = None
@@ -83,8 +90,8 @@ class RAGEngine:
                 )
             else:
                 self.vectorstore.add_documents(langchain_docs)
-            
-            self.vectorstore.persist()
+
+            # Note: Chroma 0.4.x+ auto-persists, no manual persist() needed
             self._setup_qa_chain()
             
             return True
@@ -95,24 +102,33 @@ class RAGEngine:
     
     def _setup_qa_chain(self):
         """Setup QA chain using LCEL"""
-        template = """You are an AI assistant analyzing NATO Project Management Plans.
+        template = """You are an expert AI analyst specializing in NATO Project Management Plans (PMPs).
 
-Use the context to answer the question. If you don't know, say so.
-Always cite the source document.
+INSTRUCTIONS:
+- Analyze the provided context carefully and extract SPECIFIC information
+- Give DETAILED answers with concrete facts, numbers, dates, and names when available
+- ALWAYS cite which project(s) you're referencing
+- If information is not in the context, clearly state "I cannot find this information in the uploaded documents"
+- Provide different insights for different questions - avoid generic responses
+- When asked about multiple projects, compare and contrast them
+- Include relevant details like: budget amounts, dates, stakeholders, status, risks
 
-Context:
+Context from PMPs:
 {context}
 
-Question: {question}
+User Question: {question}
 
-Helpful Answer:"""
+Detailed Answer (be specific and cite sources):"""
         
         QA_PROMPT = PromptTemplate(
             template=template,
             input_variables=["context", "question"]
         )
         
-        self.retriever = self.vectorstore.as_retriever(search_kwargs={"k": 4})
+        self.retriever = self.vectorstore.as_retriever(
+            search_type="similarity",
+            search_kwargs={"k": 6}  # Retrieve more chunks for better context
+        )
         
         def format_docs(docs):
             return "\n\n".join(doc.page_content for doc in docs)

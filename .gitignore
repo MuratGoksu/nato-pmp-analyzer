@@ -10,6 +10,7 @@ ENV/
 
 # Environment variables
 .env
+.streamlit/secrets.toml
 
 # IDE
 .vscode/
@@ -40,3 +41,4 @@ chroma_db/
 
 # Application specific
 nato-pmp-analyzer-backup-*
+processed_documents.json

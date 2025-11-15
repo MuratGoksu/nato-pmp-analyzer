@@ -9,11 +9,18 @@ import plotly.express as px
 import plotly.graph_objects as go
 from backend.relationship_analyzer import RelationshipAnalyzer
 import networkx as nx
+import shutil
+import traceback
 
 sys.path.append(str(Path(__file__).parent))
 
 from backend.document_processor import DocumentProcessor
 from backend.rag_engine import RAGEngine
+from backend.export_manager import ExportManager
+from backend.timeline_manager import TimelineManager
+from backend.notification_manager import NotificationManager
+from backend.ai_insights import AIInsightsManager
+from backend.document_storage import DocumentStorage
 
 st.set_page_config(
     page_title="NATO PMP Analyzer",
@@ -64,6 +71,8 @@ if 'relationship_analyzer' not in st.session_state:
     st.session_state.relationship_analyzer = RelationshipAnalyzer()
 if 'network_data' not in st.session_state:
     st.session_state.network_data = None
+if 'documents_loaded_from_disk' not in st.session_state:
+    st.session_state.documents_loaded_from_disk = False
 @st.cache_resource
 def get_processor():
     return DocumentProcessor()
@@ -76,8 +85,65 @@ def get_rag_engine():
         st.error(f"⚠️ OpenAI API Key not configured! {str(e)}")
         return None
 
+@st.cache_resource
+def get_export_manager():
+    return ExportManager()
+
+@st.cache_resource
+def get_timeline_manager():
+    return TimelineManager()
+
+@st.cache_resource
+def get_notification_manager():
+    try:
+        return NotificationManager()
+    except Exception as e:
+        return None
+
+@st.cache_resource
+def get_ai_insights():
+    try:
+        return AIInsightsManager()
+    except Exception as e:
+        return None
+
+@st.cache_resource
+def get_document_storage():
+    return DocumentStorage()
+
 processor = get_processor()
 rag_engine = get_rag_engine()
+export_manager = get_export_manager()
+timeline_manager = get_timeline_manager()
+notification_manager = get_notification_manager()
+ai_insights = get_ai_insights()
+doc_storage = get_document_storage()
+
+# Load documents from disk on startup
+if not st.session_state.documents_loaded_from_disk:
+    saved_docs = doc_storage.load_documents()
+    if saved_docs:
+        st.session_state.processed_documents = saved_docs
+        # Initialize RAG with loaded documents
+        if rag_engine and saved_docs:
+            try:
+                print(f"🔄 Attempting to initialize RAG with {len(saved_docs)} documents...")
+                success = rag_engine.add_documents(saved_docs)
+                if success:
+                    st.session_state.rag_initialized = True
+                    print(f"✅ RAG initialized with {len(saved_docs)} documents on startup")
+                else:
+                    print("❌ RAG initialization returned False on startup")
+                    print("   Check if documents contain valid text content")
+            except Exception as e:
+                print(f"❌ Error initializing RAG on startup: {str(e)}")
+                print(f"   Full traceback:\n{traceback.format_exc()}")
+        else:
+            print("⚠️ RAG engine not available or no documents")
+            print(f"   rag_engine: {rag_engine is not None}, saved_docs count: {len(saved_docs) if saved_docs else 0}")
+    else:
+        print("ℹ️ No saved documents found")
+    st.session_state.documents_loaded_from_disk = True
 
 def generate_simple_response(prompt: str, documents: list) -> str:
     prompt_lower = prompt.lower()
@@ -105,16 +171,40 @@ with st.sidebar:
     st.markdown("### 📊 Navigation")
     page = st.radio(
         "Select Page",
-        ["🏠 Home", "📤 Upload Documents", "💬 Chatbot", "📈 Dashboard", "👥 Stakeholder Network", "🔗 Network Graph"],
+        ["🏠 Home", "📤 Upload Documents", "💬 Chatbot", "📈 Dashboard", "👥 Stakeholder Network", "🔗 Network Graph", "📅 Timeline", "📊 AI Insights", "📥 Export", "📧 Notifications"],
         label_visibility="collapsed"
     )
     
     st.markdown("---")
     st.markdown("### 📁 Processed Documents")
+
+    # Storage info
+    storage_info = doc_storage.get_storage_info()
+    if storage_info['exists']:
+        st.info(f"💾 {storage_info['document_count']} saved ({storage_info['file_size_mb']} MB)")
+
     if st.session_state.processed_documents:
         for doc in st.session_state.processed_documents:
             status_icon = "✅" if doc['success'] else "❌"
             st.markdown(f"{status_icon} {doc['file_name']}")
+
+        # Clear all button
+        if st.button("🗑️ Clear All Documents", type="secondary", help="Remove all saved documents"):
+            if st.session_state.get('confirm_clear', False):
+                # Actually clear
+                doc_storage.clear_documents()
+                st.session_state.processed_documents = []
+                st.session_state.rag_initialized = False
+                st.session_state.confirm_clear = False
+                # Clear vector DB
+                if os.path.exists("./chroma_db"):
+                    shutil.rmtree("./chroma_db")
+                st.success("✅ All documents cleared!")
+                st.rerun()
+            else:
+                # Confirm first
+                st.session_state.confirm_clear = True
+                st.warning("⚠️ Click again to confirm deletion")
     else:
         st.info("No documents processed yet")
     
@@ -205,11 +295,11 @@ if page == "🏠 Home":
         """)
         
         st.markdown("""
-        #### 🔗 Coming Soon
-        - 🔄 Network graph visualization
-        - 🔄 Advanced filtering
-        - 🔄 Export functionality
-        - 🔄 Timeline charts
+        #### 🆕 New Features ✨
+        - ✅ PDF/Excel export
+        - ✅ Timeline & Gantt charts
+        - ✅ Email notifications
+        - ✅ AI insights & predictions
         """)
     
     st.markdown("---")
@@ -286,7 +376,12 @@ elif page == "📤 Upload Documents":
                         st.warning(f"⚠️ Documents processed but RAG initialization failed.")
             else:
                 st.success(f"✅ Processed {len(uploaded_files)} document(s)!")
-            
+
+            # Save documents to disk for persistence
+            with st.spinner("💾 Saving documents..."):
+                doc_storage.save_documents(st.session_state.processed_documents)
+                st.success("💾 Documents saved! They will persist between sessions.")
+
             st.rerun()
     
     st.markdown('</div>', unsafe_allow_html=True)
@@ -321,23 +416,82 @@ elif page == "📤 Upload Documents":
                     st.text_area("First 500 characters:", preview, height=150, disabled=True, 
                                 key=f"txt_prev_{doc['file_name']}_{doc['processed_at']}")
                     
-                    if st.checkbox(f"Show detailed metadata", key=f"meta_{doc['file_name']}"):
+                    if st.checkbox(f"Show detailed metadata", key=f"meta_{doc['file_name']}_{doc.get('processed_at', '')}"):
                         st.json(metadata)
 
 elif page == "💬 Chatbot":
     st.markdown("### 💬 Ask Questions About Your PMPs")
-    
+
     if not st.session_state.processed_documents:
         st.warning("⚠️ Please upload and process documents first!")
         if st.button("Go to Upload Page"):
             st.rerun()
     else:
         successful_docs = [doc for doc in st.session_state.processed_documents if doc['success']]
-        
+
         if st.session_state.rag_initialized and rag_engine:
             st.success(f"🤖 RAG-powered chatbot active! Ask complex questions about {len(successful_docs)} document(s)")
+
+            # Example questions
+            with st.expander("💡 Example Questions to Try", expanded=False):
+                st.markdown("""
+                **Specific Project Questions:**
+                - What is the budget for [Project Name]?
+                - Who are the stakeholders in [Project Name]?
+                - What is the current status of [Project Name]?
+                - What are the key dates and milestones for [Project Name]?
+
+                **Comparison Questions:**
+                - Compare the budgets of all projects
+                - Which projects have RED status and why?
+                - Which projects share common stakeholders?
+                - What are the differences between [Project A] and [Project B]?
+
+                **Analysis Questions:**
+                - What are the main risks across all projects?
+                - Summarize all projects with AMBER or RED status
+                - Which projects are related to cyber security?
+                - What technologies are mentioned across projects?
+
+                **Portfolio Questions:**
+                - Give me an overview of all projects
+                - Which projects have the largest budgets?
+                - What are the common themes across projects?
+                - Which projects are likely to have delays?
+                """)
         else:
             st.info(f"💡 Basic chatbot mode (pattern matching) - {len(successful_docs)} document(s)")
+            st.warning("⚠️ RAG not initialized. Click the button below to initialize.")
+
+            # Manual RAG initialization button
+            if rag_engine:
+                if st.button("🔄 Initialize RAG Engine", type="primary"):
+                    with st.spinner("🤖 Initializing RAG..."):
+                        try:
+                            print(f"🔄 Manual RAG initialization with {len(successful_docs)} documents...")
+                            success = rag_engine.add_documents(successful_docs)
+                            if success:
+                                st.session_state.rag_initialized = True
+                                st.success("✅ RAG initialized successfully!")
+                                print("✅ Manual RAG initialization succeeded")
+                                st.rerun()
+                            else:
+                                error_msg = "❌ RAG initialization returned False. Possible causes:\n"
+                                error_msg += "- No valid text content in documents\n"
+                                error_msg += "- OpenAI API key issue\n"
+                                error_msg += "- Vector store connection problem"
+                                st.error(error_msg)
+                                print("❌ Manual RAG initialization returned False")
+                                print(f"   Documents to add: {len(successful_docs)}")
+                                for doc in successful_docs[:3]:  # Show first 3
+                                    print(f"   - {doc.get('file_name')}: success={doc.get('success')}, text_length={len(doc.get('text', ''))}")
+                        except Exception as e:
+                            error_msg = f"❌ RAG initialization error: {str(e)}"
+                            st.error(error_msg)
+                            print(f"❌ Manual RAG initialization exception: {str(e)}")
+                            print(f"   Full traceback:\n{traceback.format_exc()}")
+            else:
+                st.error("⚠️ OpenAI API key not configured in .env file")
         
         if "messages" not in st.session_state:
             st.session_state.messages = []
@@ -1008,10 +1162,399 @@ elif page == "🔗 Network Graph":
                     st.error(f"❌ Error creating network: {str(e)}")
                     st.exception(e)
 
+elif page == "📅 Timeline":
+    st.markdown("### 📅 Project Timeline & Gantt Chart")
+
+    successful_docs = [doc for doc in st.session_state.processed_documents if doc['success']]
+
+    if not successful_docs:
+        st.warning("⚠️ Please upload and process documents first!")
+    else:
+        # Timeline statistics
+        stats = timeline_manager.get_timeline_statistics(successful_docs)
+
+        st.markdown("#### 📊 Timeline Overview")
+        col1, col2, col3, col4 = st.columns(4)
+
+        with col1:
+            st.metric("Total Projects", stats['total_projects'])
+
+        with col2:
+            st.metric("With Dates", stats['projects_with_dates'])
+
+        with col3:
+            if stats['earliest_start']:
+                st.metric("Earliest Start", stats['earliest_start'].strftime('%Y-%m-%d'))
+            else:
+                st.metric("Earliest Start", "N/A")
+
+        with col4:
+            if stats['average_duration_days']:
+                st.metric("Avg Duration", f"{int(stats['average_duration_days'])} days")
+            else:
+                st.metric("Avg Duration", "N/A")
+
+        st.markdown("---")
+
+        # Visualization selector
+        viz_type = st.selectbox(
+            "Select Visualization Type:",
+            ["Gantt Chart", "Timeline Overview", "Milestone Chart"]
+        )
+
+        if viz_type == "Gantt Chart":
+            st.markdown("#### 📊 Gantt Chart")
+            st.info("ℹ️ Shows project timelines based on dates found in documents. Projects without dates use estimated timelines.")
+
+            fig = timeline_manager.create_gantt_chart(successful_docs)
+            st.plotly_chart(fig, use_container_width=True)
+
+        elif viz_type == "Timeline Overview":
+            st.markdown("#### 📈 Timeline Overview")
+            st.info("ℹ️ Shows start and end dates for all projects")
+
+            fig = timeline_manager.create_timeline_chart(successful_docs)
+            st.plotly_chart(fig, use_container_width=True)
+
+        elif viz_type == "Milestone Chart":
+            st.markdown("#### 🎯 Project Milestones")
+            st.info("ℹ️ Shows all dates found across project documents")
+
+            fig = timeline_manager.create_milestone_chart(successful_docs)
+            st.plotly_chart(fig, use_container_width=True)
+
+elif page == "📊 AI Insights":
+    st.markdown("### 📊 AI-Powered Portfolio Insights")
+
+    successful_docs = [doc for doc in st.session_state.processed_documents if doc['success']]
+
+    if not successful_docs:
+        st.warning("⚠️ Please upload and process documents first!")
+    else:
+        if not ai_insights or not ai_insights.is_configured():
+            st.info("ℹ️ AI Insights available in basic mode. Configure OpenAI API key for advanced analysis.")
+        else:
+            st.success("🤖 AI-powered insights active (GPT-4)")
+
+        # Generate insights
+        if st.button("🔄 Generate Portfolio Insights", type="primary"):
+            with st.spinner("🤖 Analyzing portfolio with AI..."):
+                insights = ai_insights.generate_portfolio_insights(successful_docs) if ai_insights else {}
+
+                # Display insights
+                st.markdown("---")
+                st.markdown("#### 🎯 Strategic Overview")
+                st.markdown(insights.get('strategic_overview', 'No insights available'))
+
+                col1, col2 = st.columns(2)
+
+                with col1:
+                    st.markdown("#### 📈 Key Trends")
+                    st.markdown(insights.get('trends', 'No trends identified'))
+
+                    st.markdown("#### ⚠️ Risk Assessment")
+                    st.markdown(insights.get('risks', 'No risks identified'))
+
+                with col2:
+                    st.markdown("#### 🤝 Synergy Opportunities")
+                    st.markdown(insights.get('synergies', 'No synergies identified'))
+
+                    st.markdown("#### 💡 Recommendations")
+                    st.markdown(insights.get('recommendations', 'No recommendations'))
+
+        st.markdown("---")
+
+        # Executive Summary
+        st.markdown("#### 📋 Executive Summary")
+        if st.button("Generate Executive Summary"):
+            with st.spinner("Creating summary..."):
+                summary = ai_insights.generate_executive_summary(successful_docs) if ai_insights else "Summary not available"
+                st.markdown(summary)
+
+        st.markdown("---")
+
+        # Risk Analysis
+        st.markdown("#### ⚠️ Project Risk Analysis")
+
+        selected_project = st.selectbox(
+            "Select project for risk analysis:",
+            range(len(successful_docs)),
+            format_func=lambda i: successful_docs[i].get('metadata', {}).get('project_name', f'Project {i+1}')
+        )
+
+        if st.button("Analyze Risk"):
+            with st.spinner("Analyzing project risks..."):
+                risk_analysis = ai_insights.predict_project_risks(successful_docs[selected_project]) if ai_insights else {}
+
+                col1, col2, col3 = st.columns(3)
+
+                with col1:
+                    risk_level = risk_analysis.get('risk_level', 'UNKNOWN')
+                    risk_color = {'HIGH': '🔴', 'MEDIUM': '🟡', 'LOW': '🟢'}.get(risk_level, '⚫')
+                    st.metric("Risk Level", f"{risk_color} {risk_level}")
+
+                with col2:
+                    st.metric("Risk Score", f"{risk_analysis.get('risk_score', 0)}/100")
+
+                with col3:
+                    st.metric("Risk Factors", len(risk_analysis.get('risk_factors', [])))
+
+                if risk_analysis.get('risk_factors'):
+                    st.markdown("**Identified Risk Factors:**")
+                    for factor in risk_analysis['risk_factors']:
+                        st.markdown(f"- {factor}")
+
+                if risk_analysis.get('recommendations'):
+                    st.markdown("**Recommendations:**")
+                    for rec in risk_analysis['recommendations']:
+                        st.markdown(f"- {rec}")
+
+elif page == "📥 Export":
+    st.markdown("### 📥 Export Reports & Data")
+
+    successful_docs = [doc for doc in st.session_state.processed_documents if doc['success']]
+
+    if not successful_docs:
+        st.warning("⚠️ Please upload and process documents first!")
+    else:
+        st.info(f"📊 Ready to export {len(successful_docs)} document(s)")
+
+        # Export options
+        col1, col2 = st.columns(2)
+
+        with col1:
+            st.markdown("#### 📊 Excel Export")
+            st.markdown("""
+            Export includes:
+            - Project overview with all metadata
+            - Stakeholder directory
+            - Summary statistics
+            """)
+
+            if st.button("📥 Export to Excel", type="primary", key="export_excel"):
+                with st.spinner("Generating Excel file..."):
+                    try:
+                        excel_buffer = export_manager.export_to_excel(successful_docs)
+
+                        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                        filename = f"NATO_PMP_Analysis_{timestamp}.xlsx"
+
+                        st.download_button(
+                            label="⬇️ Download Excel File",
+                            data=excel_buffer,
+                            file_name=filename,
+                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                        )
+                        st.success("✅ Excel file generated successfully!")
+                    except Exception as e:
+                        st.error(f"Error generating Excel: {str(e)}")
+
+        with col2:
+            st.markdown("#### 📄 PDF Export")
+            st.markdown("""
+            Export includes:
+            - Executive summary
+            - Project overview table
+            - Detailed project information
+            """)
+
+            if st.button("📥 Export to PDF", type="primary", key="export_pdf"):
+                with st.spinner("Generating PDF report..."):
+                    try:
+                        pdf_buffer = export_manager.export_to_pdf(successful_docs)
+
+                        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                        filename = f"NATO_PMP_Report_{timestamp}.pdf"
+
+                        st.download_button(
+                            label="⬇️ Download PDF Report",
+                            data=pdf_buffer,
+                            file_name=filename,
+                            mime="application/pdf"
+                        )
+                        st.success("✅ PDF report generated successfully!")
+                    except Exception as e:
+                        st.error(f"Error generating PDF: {str(e)}")
+
+        st.markdown("---")
+
+        # Comprehensive summary report
+        st.markdown("#### 📋 Comprehensive Summary Report")
+        st.markdown("Generate a detailed PDF report with AI insights and recommendations")
+
+        if st.button("📥 Generate Comprehensive Report", type="secondary"):
+            with st.spinner("Creating comprehensive report..."):
+                try:
+                    # Generate AI insights first
+                    analysis_results = None
+                    if ai_insights and ai_insights.is_configured():
+                        insights = ai_insights.generate_portfolio_insights(successful_docs)
+                        summary = ai_insights.generate_executive_summary(successful_docs)
+                        analysis_results = {
+                            'insights': summary + '\n\n' + insights.get('strategic_overview', '')
+                        }
+
+                    pdf_buffer = export_manager.create_summary_report_pdf(successful_docs, analysis_results)
+
+                    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                    filename = f"NATO_PMP_Comprehensive_Report_{timestamp}.pdf"
+
+                    st.download_button(
+                        label="⬇️ Download Comprehensive Report",
+                        data=pdf_buffer,
+                        file_name=filename,
+                        mime="application/pdf"
+                    )
+                    st.success("✅ Comprehensive report generated!")
+                except Exception as e:
+                    st.error(f"Error generating report: {str(e)}")
+
+elif page == "📧 Notifications":
+    st.markdown("### 📧 Email Notifications")
+
+    successful_docs = [doc for doc in st.session_state.processed_documents if doc['success']]
+
+    # Configuration section
+    st.markdown("#### ⚙️ Email Configuration")
+
+    if notification_manager and notification_manager.is_configured():
+        st.success("✅ Email notifications configured and ready")
+    else:
+        st.warning("⚠️ Email notifications not configured")
+        st.info("""
+        **To enable email notifications:**
+        1. Create a `.env` file in the project root
+        2. Add the following variables:
+        ```
+        SMTP_SERVER=smtp.gmail.com
+        SMTP_PORT=587
+        SMTP_USERNAME=your-email@gmail.com
+        SMTP_PASSWORD=your-app-password
+        FROM_EMAIL=your-email@gmail.com
+        ```
+        3. For Gmail, use an [App Password](https://support.google.com/accounts/answer/185833)
+        """)
+
+    st.markdown("---")
+
+    if notification_manager and notification_manager.is_configured():
+        # Test email
+        st.markdown("#### 🧪 Test Email Configuration")
+
+        test_email = st.text_input("Enter email address for test:", "")
+
+        if st.button("📧 Send Test Email"):
+            if test_email:
+                with st.spinner("Sending test email..."):
+                    success = notification_manager.send_test_email(test_email)
+                    if success:
+                        st.success(f"✅ Test email sent to {test_email}!")
+                    else:
+                        st.error("❌ Failed to send test email. Check your SMTP configuration.")
+            else:
+                st.warning("Please enter an email address")
+
+        st.markdown("---")
+
+        # Alert notifications
+        st.markdown("#### 🚨 Send Alert Notifications")
+
+        if not successful_docs:
+            st.warning("⚠️ No documents processed. Upload documents first.")
+        else:
+            red_projects = [doc for doc in successful_docs if doc.get('metadata', {}).get('status') == 'RED']
+            amber_projects = [doc for doc in successful_docs if doc.get('metadata', {}).get('status') == 'AMBER']
+
+            col1, col2 = st.columns(2)
+
+            with col1:
+                st.metric("🔴 RED Projects", len(red_projects))
+            with col2:
+                st.metric("🟡 AMBER Projects", len(amber_projects))
+
+            alert_type = st.selectbox(
+                "Select alert type:",
+                ["RED - Critical Projects", "AMBER - Warning Projects", "ALL - Status Update"]
+            )
+
+            recipient_emails = st.text_area(
+                "Recipient email addresses (one per line):",
+                help="Enter email addresses, one per line"
+            )
+
+            if st.button("📧 Send Alert Notification", type="primary"):
+                if not recipient_emails:
+                    st.warning("Please enter at least one recipient email")
+                else:
+                    emails = [e.strip() for e in recipient_emails.split('\n') if e.strip()]
+
+                    # Select projects based on alert type
+                    if "RED" in alert_type:
+                        projects_to_alert = red_projects
+                        alert_level = "RED"
+                    elif "AMBER" in alert_type:
+                        projects_to_alert = amber_projects
+                        alert_level = "AMBER"
+                    else:
+                        projects_to_alert = successful_docs
+                        alert_level = "CUSTOM"
+
+                    if not projects_to_alert:
+                        st.info("No projects match the selected alert criteria")
+                    else:
+                        with st.spinner(f"Sending notification to {len(emails)} recipient(s)..."):
+                            success = notification_manager.send_alert_notification(
+                                emails, projects_to_alert, alert_level
+                            )
+
+                            if success:
+                                st.success(f"✅ Alert sent to {len(emails)} recipient(s)!")
+                                st.balloons()
+                            else:
+                                st.error("❌ Failed to send notification")
+
+            st.markdown("---")
+
+            # Summary report email
+            st.markdown("#### 📊 Email Portfolio Report")
+
+            report_emails = st.text_area(
+                "Report recipient emails (one per line):",
+                key="report_emails",
+                help="Enter email addresses for portfolio report"
+            )
+
+            include_attachment = st.checkbox("Include PDF report as attachment", value=True)
+
+            if st.button("📧 Send Portfolio Report", type="secondary"):
+                if not report_emails:
+                    st.warning("Please enter recipient emails")
+                else:
+                    emails = [e.strip() for e in report_emails.split('\n') if e.strip()]
+
+                    with st.spinner("Preparing and sending report..."):
+                        attachment = None
+                        attachment_name = None
+
+                        if include_attachment:
+                            # Generate PDF report
+                            pdf_buffer = export_manager.export_to_pdf(successful_docs)
+                            attachment = pdf_buffer.getvalue()
+                            attachment_name = f"NATO_PMP_Report_{datetime.now().strftime('%Y%m%d')}.pdf"
+
+                        success = notification_manager.send_summary_report(
+                            emails, successful_docs, attachment, attachment_name
+                        )
+
+                        if success:
+                            st.success(f"✅ Report sent to {len(emails)} recipient(s)!")
+                        else:
+                            st.error("❌ Failed to send report")
+
 st.markdown("---")
 st.markdown("""
 <div style='text-align: center; color: #666; padding: 1rem;'>
-    <p>🛡️ NATO PMP Analyzer PoC v0.4 | Built with Streamlit, OpenAI & LangChain</p>
-    <p>📅 Week 1 Complete - Day 5: Clean & Stable ✅</p>
+    <p>🛡️ NATO PMP Analyzer PoC v0.5 | Built with Streamlit, OpenAI & LangChain</p>
+    <p>📅 Enhanced Features: Export, Timeline, AI Insights & Notifications ✅</p>
 </div>
 """, unsafe_allow_html=True)
