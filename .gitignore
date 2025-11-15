@@ -42,3 +42,4 @@ chroma_db/
 # Application specific
 nato-pmp-analyzer-backup-*
 processed_documents.json
+test_api_key.py
